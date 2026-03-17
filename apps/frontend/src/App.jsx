@@ -31,8 +31,26 @@ export function App() {
   const [createForm, setCreateForm] = useState(initialForm);
   const [editingId, setEditingId] = useState(null);
   const [editForm, setEditForm] = useState(initialForm);
+  const [payrollEntries, setPayrollEntries] = useState([]);
+  const [payrollSummary, setPayrollSummary] = useState({
+    count: 0,
+    total_amount: 0,
+    pending_count: 0,
+    needs_change_count: 0
+  });
+  const [payrollMonth, setPayrollMonth] = useState('');
+  const [payrollDriverId, setPayrollDriverId] = useState('all');
+  const [payrollStatus, setPayrollStatus] = useState('all');
+  const [payrollQuery, setPayrollQuery] = useState('');
+  const [payrollPage, setPayrollPage] = useState(1);
+  const [payrollLimit] = useState(20);
+  const [payrollTotal, setPayrollTotal] = useState(0);
 
   const pages = useMemo(() => Math.max(1, Math.ceil(total / limit)), [total, limit]);
+  const payrollPages = useMemo(
+    () => Math.max(1, Math.ceil(payrollTotal / payrollLimit)),
+    [payrollTotal, payrollLimit]
+  );
 
   const fetchHealth = useCallback(async () => {
     try {
@@ -64,8 +82,47 @@ export function App() {
     }
   }, [limit, page, query, status]);
 
+  const loadPayroll = useCallback(async (nextPage = payrollPage) => {
+    setLoading(true);
+    setError('');
+    try {
+      const entriesParams = new URLSearchParams({
+        page: String(nextPage),
+        limit: String(payrollLimit),
+        status: payrollStatus || 'all'
+      });
+      if (payrollMonth.trim()) entriesParams.set('month', payrollMonth.trim());
+      if (payrollDriverId && payrollDriverId !== 'all') entriesParams.set('driverId', payrollDriverId);
+      if (payrollQuery.trim()) entriesParams.set('q', payrollQuery.trim());
+
+      const summaryParams = new URLSearchParams();
+      if (payrollMonth.trim()) summaryParams.set('month', payrollMonth.trim());
+      if (payrollDriverId && payrollDriverId !== 'all') summaryParams.set('driverId', payrollDriverId);
+
+      const [entriesResponse, summaryResponse] = await Promise.all([
+        apiGet(`/api/v1/payroll/entries?${entriesParams.toString()}`),
+        apiGet(`/api/v1/payroll/summary?${summaryParams.toString()}`)
+      ]);
+
+      setPayrollEntries(entriesResponse?.data?.items || []);
+      setPayrollTotal(Number(entriesResponse?.data?.total || 0));
+      setPayrollPage(nextPage);
+      setPayrollSummary(summaryResponse?.data || {
+        count: 0,
+        total_amount: 0,
+        pending_count: 0,
+        needs_change_count: 0
+      });
+    } catch (e) {
+      setError(e.message || '明細取得に失敗しました。');
+    } finally {
+      setLoading(false);
+    }
+  }, [payrollDriverId, payrollLimit, payrollMonth, payrollPage, payrollQuery, payrollStatus]);
+
   useEffect(() => {
     fetchHealth();
+    loadPayroll(1);
   }, [fetchHealth]);
 
   useEffect(() => {
@@ -258,6 +315,83 @@ export function App() {
           </div>
         </section>
       ) : null}
+
+      <section style={{ border: '1px solid #ddd', borderRadius: 8, padding: 12, marginTop: 16 }}>
+        <h2 style={{ marginTop: 0, marginBottom: 8 }}>明細管理（payroll）</h2>
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(6, minmax(0, 1fr))', gap: 8, marginBottom: 10 }}>
+          <input
+            placeholder="対象月 (例: 2026-03)"
+            value={payrollMonth}
+            onChange={(e) => setPayrollMonth(e.target.value)}
+          />
+          <select value={payrollDriverId} onChange={(e) => setPayrollDriverId(e.target.value)}>
+            <option value="all">全ドライバー</option>
+            {members.map((member) => (
+              <option key={member.id} value={member.id}>{member.name}</option>
+            ))}
+          </select>
+          <select value={payrollStatus} onChange={(e) => setPayrollStatus(e.target.value)}>
+            <option value="all">全ステータス</option>
+            <option value="pending">未承認</option>
+            <option value="needs_change">差し戻し</option>
+            <option value="driver_approved">承認済み</option>
+            <option value="admin_approved">管理者承認済み</option>
+          </select>
+          <input
+            placeholder="内容 / driverId"
+            value={payrollQuery}
+            onChange={(e) => setPayrollQuery(e.target.value)}
+          />
+          <button type="button" onClick={() => loadPayroll(1)} disabled={loading}>
+            {loading ? '読み込み中...' : '明細検索'}
+          </button>
+        </div>
+
+        <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginBottom: 10 }}>
+          <SummaryCard label="表示件数" value={payrollSummary.count} />
+          <SummaryCard label="合計金額" value={`¥${formatNumber(payrollSummary.total_amount)}`} />
+          <SummaryCard label="未承認" value={payrollSummary.pending_count} />
+          <SummaryCard label="差し戻し" value={payrollSummary.needs_change_count} />
+        </div>
+
+        <div style={{ border: '1px solid #eee', borderRadius: 8, overflow: 'hidden' }}>
+          <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+            <thead style={{ background: '#f6f6f6' }}>
+              <tr>
+                <th style={{ textAlign: 'left', padding: 8 }}>ID</th>
+                <th style={{ textAlign: 'left', padding: 8 }}>driverId</th>
+                <th style={{ textAlign: 'left', padding: 8 }}>対象月</th>
+                <th style={{ textAlign: 'left', padding: 8 }}>内容</th>
+                <th style={{ textAlign: 'right', padding: 8 }}>単価</th>
+                <th style={{ textAlign: 'right', padding: 8 }}>件数</th>
+                <th style={{ textAlign: 'right', padding: 8 }}>合計</th>
+                <th style={{ textAlign: 'left', padding: 8 }}>状態</th>
+              </tr>
+            </thead>
+            <tbody>
+              {payrollEntries.map((entry) => (
+                <tr key={entry.id} style={{ borderTop: '1px solid #eee' }}>
+                  <td style={{ padding: 8 }}>{entry.id}</td>
+                  <td style={{ padding: 8 }}>{entry.driver_id}</td>
+                  <td style={{ padding: 8 }}>{entry.month}</td>
+                  <td style={{ padding: 8 }}>{entry.content}</td>
+                  <td style={{ padding: 8, textAlign: 'right' }}>{formatNumber(entry.unit_price)}</td>
+                  <td style={{ padding: 8, textAlign: 'right' }}>{formatNumber(entry.quantity)}</td>
+                  <td style={{ padding: 8, textAlign: 'right' }}>{formatNumber(entry.total)}</td>
+                  <td style={{ padding: 8 }}>{entry.status}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 10 }}>
+          <button type="button" disabled={payrollPage <= 1} onClick={() => loadPayroll(payrollPage - 1)}>前へ</button>
+          <span>{payrollPage} / {payrollPages}</span>
+          <span>表示: {payrollEntries.length} / 総件数: {payrollTotal}</span>
+          <button type="button" disabled={payrollPage >= payrollPages} onClick={() => loadPayroll(payrollPage + 1)}>次へ</button>
+        </div>
+      </section>
     </main>
   );
 }
@@ -266,3 +400,17 @@ function isValidInvoiceNumber(value) {
   return /^T\d{13}$/i.test(String(value || '').trim());
 }
 
+function formatNumber(value) {
+  const num = Number(value || 0);
+  if (!Number.isFinite(num)) return '0';
+  return num.toLocaleString('ja-JP');
+}
+
+function SummaryCard({ label, value }) {
+  return (
+    <div style={{ border: '1px solid #ddd', borderRadius: 8, padding: '8px 12px', minWidth: 140 }}>
+      <p style={{ margin: 0, fontSize: 12, color: '#666' }}>{label}</p>
+      <p style={{ margin: 0, marginTop: 4, fontWeight: 700 }}>{value}</p>
+    </div>
+  );
+}
