@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
-import { apiGet, apiPatch, apiPost, apiPut } from './api';
+import { apiDelete, apiGet, apiPatch, apiPost, apiPut } from './api';
 
 const initialForm = {
   name: '',
@@ -11,6 +11,16 @@ const initialForm = {
   invoiceNumber: '',
   vehicleOwnership: '',
   cargoInsuranceStatus: ''
+};
+const initialPayrollEntryForm = {
+  id: '',
+  driverId: '',
+  month: '',
+  content: '',
+  unitPrice: 0,
+  quantity: 0,
+  total: 0,
+  status: 'pending'
 };
 
 const parseCsvText = (value) => String(value || '')
@@ -57,6 +67,8 @@ export function App() {
   const [auditAction, setAuditAction] = useState('');
   const [auditTargetType, setAuditTargetType] = useState('');
   const [auditQuery, setAuditQuery] = useState('');
+  const [payrollEntryForm, setPayrollEntryForm] = useState(initialPayrollEntryForm);
+  const [editingPayrollId, setEditingPayrollId] = useState('');
 
   const pages = useMemo(() => Math.max(1, Math.ceil(total / limit)), [total, limit]);
   const payrollPages = useMemo(
@@ -202,6 +214,15 @@ export function App() {
   useEffect(() => {
     loadDeductions();
   }, [loadDeductions]);
+
+  useEffect(() => {
+    if (editingPayrollId) return;
+    setPayrollEntryForm((prev) => ({
+      ...prev,
+      driverId: payrollDriverId !== 'all' ? payrollDriverId : prev.driverId,
+      month: payrollMonth || prev.month
+    }));
+  }, [editingPayrollId, payrollDriverId, payrollMonth]);
 
   const toPayload = (form) => ({
     name: form.name.trim(),
@@ -358,6 +379,68 @@ export function App() {
     }
   };
 
+  const startEditPayrollEntry = (entry) => {
+    setEditingPayrollId(entry.id);
+    setPayrollEntryForm({
+      id: entry.id,
+      driverId: entry.driver_id || '',
+      month: entry.month || '',
+      content: entry.content || '',
+      unitPrice: Number(entry.unit_price || 0),
+      quantity: Number(entry.quantity || 0),
+      total: Number(entry.total || 0),
+      status: entry.status || 'pending'
+    });
+  };
+
+  const resetPayrollEntryForm = () => {
+    setEditingPayrollId('');
+    setPayrollEntryForm({
+      ...initialPayrollEntryForm,
+      driverId: payrollDriverId !== 'all' ? payrollDriverId : '',
+      month: payrollMonth || ''
+    });
+  };
+
+  const savePayrollEntry = async () => {
+    if (!payrollEntryForm.driverId || !payrollEntryForm.month || !payrollEntryForm.content.trim()) {
+      setError('明細の保存には driverId / month / content が必要です。');
+      return;
+    }
+    setError('');
+    try {
+      const payload = {
+        driverId: payrollEntryForm.driverId,
+        month: payrollEntryForm.month,
+        content: payrollEntryForm.content.trim(),
+        unitPrice: Number(payrollEntryForm.unitPrice || 0),
+        quantity: Number(payrollEntryForm.quantity || 0),
+        total: Number(payrollEntryForm.total || 0),
+        status: payrollEntryForm.status || 'pending'
+      };
+      if (editingPayrollId) {
+        await apiPatch(`/api/v1/payroll/entries/${editingPayrollId}`, payload);
+      } else {
+        await apiPost('/api/v1/payroll/entries', payload);
+      }
+      resetPayrollEntryForm();
+      await loadPayroll(1);
+    } catch (e) {
+      setError(e.message || '明細保存に失敗しました。');
+    }
+  };
+
+  const deletePayrollEntry = async (id) => {
+    if (!window.confirm('この明細を削除します。よろしいですか？')) return;
+    setError('');
+    try {
+      await apiDelete(`/api/v1/payroll/entries/${id}`);
+      await loadPayroll(1);
+    } catch (e) {
+      setError(e.message || '明細削除に失敗しました。');
+    }
+  };
+
   return (
     <main style={{ padding: 20, fontFamily: 'system-ui, sans-serif', maxWidth: 1280, margin: '0 auto' }}>
       <h1 style={{ marginBottom: 8 }}>hakobin-re / ドライバー管理</h1>
@@ -482,6 +565,57 @@ export function App() {
 
       <section style={{ border: '1px solid #ddd', borderRadius: 8, padding: 12, marginTop: 16 }}>
         <h2 style={{ marginTop: 0, marginBottom: 8 }}>明細管理（payroll）</h2>
+        <section style={{ border: '1px solid #eee', borderRadius: 8, padding: 10, marginBottom: 10 }}>
+          <h3 style={{ marginTop: 0, marginBottom: 8 }}>{editingPayrollId ? `明細編集: ${editingPayrollId}` : '明細追加'}</h3>
+          <div style={{ display: 'grid', gridTemplateColumns: '160px 140px 1fr 110px 110px 120px 140px', gap: 8 }}>
+            <input
+              placeholder="driverId"
+              value={payrollEntryForm.driverId}
+              onChange={(e) => setPayrollEntryForm((prev) => ({ ...prev, driverId: e.target.value }))}
+            />
+            <input
+              placeholder="YYYY-MM"
+              value={payrollEntryForm.month}
+              onChange={(e) => setPayrollEntryForm((prev) => ({ ...prev, month: e.target.value }))}
+            />
+            <input
+              placeholder="内容"
+              value={payrollEntryForm.content}
+              onChange={(e) => setPayrollEntryForm((prev) => ({ ...prev, content: e.target.value }))}
+            />
+            <input
+              type="number"
+              placeholder="単価"
+              value={payrollEntryForm.unitPrice}
+              onChange={(e) => setPayrollEntryForm((prev) => ({ ...prev, unitPrice: Number(e.target.value || 0) }))}
+            />
+            <input
+              type="number"
+              placeholder="件数"
+              value={payrollEntryForm.quantity}
+              onChange={(e) => setPayrollEntryForm((prev) => ({ ...prev, quantity: Number(e.target.value || 0) }))}
+            />
+            <input
+              type="number"
+              placeholder="合計"
+              value={payrollEntryForm.total}
+              onChange={(e) => setPayrollEntryForm((prev) => ({ ...prev, total: Number(e.target.value || 0) }))}
+            />
+            <select
+              value={payrollEntryForm.status}
+              onChange={(e) => setPayrollEntryForm((prev) => ({ ...prev, status: e.target.value }))}
+            >
+              <option value="pending">未承認</option>
+              <option value="needs_change">差し戻し</option>
+              <option value="driver_approved">承認済み</option>
+              <option value="admin_approved">管理者承認済み</option>
+            </select>
+          </div>
+          <div style={{ display: 'flex', gap: 8, marginTop: 8 }}>
+            <button type="button" onClick={savePayrollEntry}>{editingPayrollId ? '更新保存' : '明細追加'}</button>
+            <button type="button" onClick={resetPayrollEntryForm}>クリア</button>
+          </div>
+        </section>
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, minmax(0, 1fr))', gap: 8, marginBottom: 10 }}>
           <label style={{ border: '1px solid #ddd', borderRadius: 8, padding: 8 }}>
             <p style={{ margin: 0, marginBottom: 6, fontSize: 13, fontWeight: 600 }}>個人明細CSV取り込み</p>
@@ -602,6 +736,7 @@ export function App() {
                 <th style={{ textAlign: 'right', padding: 8 }}>件数</th>
                 <th style={{ textAlign: 'right', padding: 8 }}>合計</th>
                 <th style={{ textAlign: 'left', padding: 8 }}>状態</th>
+                <th style={{ textAlign: 'left', padding: 8 }}>操作</th>
               </tr>
             </thead>
             <tbody>
@@ -615,6 +750,10 @@ export function App() {
                   <td style={{ padding: 8, textAlign: 'right' }}>{formatNumber(entry.quantity)}</td>
                   <td style={{ padding: 8, textAlign: 'right' }}>{formatNumber(entry.total)}</td>
                   <td style={{ padding: 8 }}>{entry.status}</td>
+                  <td style={{ padding: 8, display: 'flex', gap: 6 }}>
+                    <button type="button" onClick={() => startEditPayrollEntry(entry)}>編集</button>
+                    <button type="button" onClick={() => deletePayrollEntry(entry.id)}>削除</button>
+                  </td>
                 </tr>
               ))}
             </tbody>

@@ -501,6 +501,114 @@ app.get('/api/v1/payroll/summary', { preHandler: [authGuard, requireAdmin] }, as
   }
 });
 
+app.post('/api/v1/payroll/entries', { preHandler: [authGuard, requireAdmin] }, async (request, reply) => {
+  try {
+    const body = request.body || {};
+    const driverId = String(body.driverId || '').trim();
+    const month = normalizeMonth(body.month);
+    const content = String(body.content || '').trim();
+    if (!driverId || !month || !content) {
+      return reply.code(400).send(fail('invalid_request', 'driverId, month, content are required.'));
+    }
+    const unitPrice = parseNumeric(body.unitPrice);
+    const quantity = parseNumeric(body.quantity);
+    const total = body.total != null && body.total !== ''
+      ? parseNumeric(body.total)
+      : unitPrice * quantity;
+    const id = String(body.id || `${driverId}-${month}-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`);
+    const statementId = String(body.statementId || 'default');
+    const statementType = String(body.statementType || 'driver');
+    const rowNo = body.rowNo != null ? Number(body.rowNo) : null;
+
+    const result = await pool.query(
+      `insert into payroll_entries
+        (id, driver_id, month, content, unit_price, quantity, total, status, statement_id, statement_type, row_no, input_source, updated_at)
+        values ($1,$2,$3,$4,$5,$6,$7,'pending',$8,$9,$10,'manual',now())
+        returning *`,
+      [id, driverId, month, content, unitPrice, quantity, total, statementId, statementType, rowNo]
+    );
+    await writeAuditLog(request, 'create', 'payroll-entry', id, { driverId, month, content });
+    return reply.code(201).send(ok(result.rows[0]));
+  } catch (error) {
+    request.log.error(error);
+    return reply.code(500).send(fail('payroll_create_failed', 'Failed to create payroll entry.'));
+  }
+});
+
+app.patch('/api/v1/payroll/entries/:id', { preHandler: [authGuard, requireAdmin] }, async (request, reply) => {
+  try {
+    const current = await pool.query('select * from payroll_entries where id = $1 limit 1', [request.params.id]);
+    if (!current.rows[0]) return reply.code(404).send(fail('not_found', 'Payroll entry not found.'));
+    const prev = current.rows[0];
+    const body = request.body || {};
+    const next = {
+      driver_id: body.driverId != null ? String(body.driverId).trim() || prev.driver_id : prev.driver_id,
+      month: body.month != null ? normalizeMonth(body.month) || prev.month : prev.month,
+      content: body.content != null ? String(body.content).trim() || prev.content : prev.content,
+      unit_price: body.unitPrice != null ? parseNumeric(body.unitPrice) : Number(prev.unit_price || 0),
+      quantity: body.quantity != null ? parseNumeric(body.quantity) : Number(prev.quantity || 0),
+      total: body.total != null && body.total !== ''
+        ? parseNumeric(body.total)
+        : (
+          (body.unitPrice != null ? parseNumeric(body.unitPrice) : Number(prev.unit_price || 0))
+          * (body.quantity != null ? parseNumeric(body.quantity) : Number(prev.quantity || 0))
+        ),
+      status: body.status != null ? String(body.status).trim() || prev.status : prev.status,
+      statement_id: body.statementId != null ? String(body.statementId).trim() || prev.statement_id : prev.statement_id,
+      statement_type: body.statementType != null ? String(body.statementType).trim() || prev.statement_type : prev.statement_type,
+      row_no: body.rowNo != null ? Number(body.rowNo) : prev.row_no
+    };
+    const result = await pool.query(
+      `update payroll_entries set
+        driver_id=$1,
+        month=$2,
+        content=$3,
+        unit_price=$4,
+        quantity=$5,
+        total=$6,
+        status=$7,
+        statement_id=$8,
+        statement_type=$9,
+        row_no=$10,
+        updated_at=now()
+      where id=$11
+      returning *`,
+      [
+        next.driver_id,
+        next.month,
+        next.content,
+        next.unit_price,
+        next.quantity,
+        next.total,
+        next.status,
+        next.statement_id,
+        next.statement_type,
+        next.row_no,
+        request.params.id
+      ]
+    );
+    await writeAuditLog(request, 'update', 'payroll-entry', String(request.params.id), {
+      changedKeys: Object.keys(body || {})
+    });
+    return ok(result.rows[0]);
+  } catch (error) {
+    request.log.error(error);
+    return reply.code(500).send(fail('payroll_update_failed', 'Failed to update payroll entry.'));
+  }
+});
+
+app.delete('/api/v1/payroll/entries/:id', { preHandler: [authGuard, requireAdmin] }, async (request, reply) => {
+  try {
+    const result = await pool.query('delete from payroll_entries where id = $1 returning id, driver_id, month', [request.params.id]);
+    if (!result.rows[0]) return reply.code(404).send(fail('not_found', 'Payroll entry not found.'));
+    await writeAuditLog(request, 'delete', 'payroll-entry', String(request.params.id), result.rows[0]);
+    return ok(result.rows[0]);
+  } catch (error) {
+    request.log.error(error);
+    return reply.code(500).send(fail('payroll_delete_failed', 'Failed to delete payroll entry.'));
+  }
+});
+
 app.post('/api/v1/payroll/import/details', { preHandler: [authGuard, requireAdmin] }, async (request, reply) => {
   const rows = Array.isArray(request.body?.rows) ? request.body.rows : [];
   const replaceCsvForMonths = Boolean(request.body?.replaceCsvForMonths);

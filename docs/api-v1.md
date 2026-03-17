@@ -17,6 +17,9 @@
 ## Payroll
 
 - `GET /api/v1/payroll/entries`
+- `POST /api/v1/payroll/entries`
+- `PATCH /api/v1/payroll/entries/:id`
+- `DELETE /api/v1/payroll/entries/:id`
 - `GET /api/v1/payroll/summary`
 - `POST /api/v1/payroll/import/details`
 - `POST /api/v1/payroll/import/sales-summary`
