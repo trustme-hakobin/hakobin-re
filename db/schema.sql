@@ -54,3 +54,14 @@ create table if not exists payroll_sales_summaries (
   updated_at timestamptz not null default now()
 );
 
+create table if not exists audit_logs (
+  id bigserial primary key,
+  actor_uid text,
+  actor_email text,
+  actor_role text,
+  action text not null,
+  target_type text not null,
+  target_id text,
+  meta jsonb not null default '{}'::jsonb,
+  created_at timestamptz not null default now()
+);

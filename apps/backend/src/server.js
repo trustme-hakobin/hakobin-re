@@ -29,6 +29,13 @@ const parseNumeric = (value) => {
 const isValidInvoiceNumber = (value) => /^T\d{13}$/i.test(String(value || '').trim());
 const ok = (data) => ({ ok: true, data });
 const fail = (code, message) => ({ ok: false, error: { code, message } });
+const toSafeJson = (value) => {
+  try {
+    return JSON.stringify(value ?? {});
+  } catch {
+    return JSON.stringify({ note: 'unserializable' });
+  }
+};
 
 let firebaseReady = false;
 if (process.env.FIREBASE_PROJECT_ID && process.env.FIREBASE_CLIENT_EMAIL && process.env.FIREBASE_PRIVATE_KEY) {
@@ -146,6 +153,38 @@ const initDb = async () => {
       updated_at timestamptz not null default now()
     );
   `);
+
+  await pool.query(`
+    create table if not exists audit_logs (
+      id bigserial primary key,
+      actor_uid text,
+      actor_email text,
+      actor_role text,
+      action text not null,
+      target_type text not null,
+      target_id text,
+      meta jsonb not null default '{}'::jsonb,
+      created_at timestamptz not null default now()
+    );
+  `);
+};
+
+const writeAuditLog = async (request, action, targetType, targetId = '', meta = {}) => {
+  const actor = request.user || {};
+  await pool.query(
+    `insert into audit_logs
+      (actor_uid, actor_email, actor_role, action, target_type, target_id, meta, created_at)
+      values ($1,$2,$3,$4,$5,$6,$7,now())`,
+    [
+      String(actor.uid || ''),
+      String(actor.email || ''),
+      String(actor.role || ''),
+      String(action || ''),
+      String(targetType || ''),
+      String(targetId || ''),
+      toSafeJson(meta)
+    ]
+  );
 };
 
 app.get('/health', async () => ok({ service: 'backend', status: 'up' }));
@@ -172,6 +211,51 @@ app.get('/api/v1/auth/me', { preHandler: [authGuard] }, async (request) => {
     memberId: memberRow?.id || null,
     member: memberRow
   });
+});
+
+app.get('/api/v1/audit-logs', { preHandler: [authGuard, requireAdmin] }, async (request, reply) => {
+  try {
+    const page = Math.max(1, Number(request.query.page || 1));
+    const limit = Math.max(1, Math.min(200, Number(request.query.limit || 50)));
+    const offset = (page - 1) * limit;
+    const action = String(request.query.action || '').trim();
+    const targetType = String(request.query.targetType || '').trim();
+    const q = String(request.query.q || '').trim();
+
+    const where = [];
+    const values = [];
+    if (action) {
+      values.push(action);
+      where.push(`action = $${values.length}`);
+    }
+    if (targetType) {
+      values.push(targetType);
+      where.push(`target_type = $${values.length}`);
+    }
+    if (q) {
+      values.push(`%${q}%`);
+      where.push(`(actor_uid ilike $${values.length} or actor_email ilike $${values.length} or target_id ilike $${values.length})`);
+    }
+    const whereSql = where.length > 0 ? `where ${where.join(' and ')}` : '';
+
+    const countResult = await pool.query(`select count(*)::int as count from audit_logs ${whereSql}`, values);
+    values.push(limit, offset);
+    const result = await pool.query(
+      `select * from audit_logs ${whereSql}
+       order by created_at desc
+       limit $${values.length - 1} offset $${values.length}`,
+      values
+    );
+    return ok({
+      items: result.rows,
+      page,
+      limit,
+      total: countResult.rows[0]?.count || 0
+    });
+  } catch (error) {
+    request.log.error(error);
+    return reply.code(500).send(fail('audit_log_list_failed', 'Failed to fetch audit logs.'));
+  }
 });
 
 app.get('/api/v1/members', { preHandler: [authGuard, requireAdmin] }, async (request, reply) => {
@@ -237,6 +321,9 @@ app.post('/api/v1/members', { preHandler: [authGuard, requireAdmin] }, async (re
         String(body.cargoInsuranceStatus || '').trim() || null
       ]
     );
+    await writeAuditLog(request, 'create', 'member', String(result.rows[0]?.id || ''), {
+      name: result.rows[0]?.name || ''
+    });
     return reply.code(201).send(ok(result.rows[0]));
   } catch (error) {
     request.log.error(error);
@@ -291,6 +378,9 @@ app.patch('/api/v1/members/:id', { preHandler: [authGuard, requireAdmin] }, asyn
         request.params.id
       ]
     );
+    await writeAuditLog(request, 'update', 'member', String(request.params.id), {
+      changedKeys: Object.keys(body || {})
+    });
     return ok(result.rows[0]);
   } catch (error) {
     request.log.error(error);
@@ -308,6 +398,7 @@ app.post('/api/v1/members/:id/deactivate', { preHandler: [authGuard, requireAdmi
     [reason, request.params.id]
   );
   if (!result.rows[0]) return reply.code(404).send(fail('not_found', 'Member not found.'));
+  await writeAuditLog(request, 'deactivate', 'member', String(request.params.id), { reason });
   return ok(result.rows[0]);
 });
 
@@ -320,6 +411,7 @@ app.post('/api/v1/members/:id/activate', { preHandler: [authGuard, requireAdmin]
     [request.params.id]
   );
   if (!result.rows[0]) return reply.code(404).send(fail('not_found', 'Member not found.'));
+  await writeAuditLog(request, 'activate', 'member', String(request.params.id));
   return ok(result.rows[0]);
 });
 
@@ -485,6 +577,10 @@ app.post('/api/v1/payroll/import/details', { preHandler: [authGuard, requireAdmi
       );
     }
     await client.query('commit');
+    await writeAuditLog(request, 'import', 'payroll-entry', 'bulk', {
+      importedCount: normalizedRows.length,
+      replaceCsvForMonths
+    });
     return ok({ importedCount: normalizedRows.length });
   } catch (error) {
     await client.query('rollback');
@@ -519,6 +615,9 @@ app.post('/api/v1/payroll/import/sales-summary', { preHandler: [authGuard, requi
       );
     }
     await client.query('commit');
+    await writeAuditLog(request, 'import', 'payroll-sales-summary', 'bulk', {
+      importedCount: map.size
+    });
     return ok({ importedCount: map.size });
   } catch (error) {
     await client.query('rollback');
@@ -571,6 +670,10 @@ app.put('/api/v1/payroll/deductions', { preHandler: [authGuard, requireAdmin] },
       returning *`,
     [driverId, month, statementId, JSON.stringify(items), JSON.stringify(taxSettings)]
   );
+  await writeAuditLog(request, 'update', 'payroll-deductions', `${driverId}:${month}:${statementId}`, {
+    itemCount: items.length,
+    taxSettings
+  });
   return ok(result.rows[0]);
 });
 
@@ -579,4 +682,3 @@ await initDb();
 const port = Number(process.env.PORT || 8080);
 const host = process.env.HOST || '0.0.0.0';
 app.listen({ port, host });
-

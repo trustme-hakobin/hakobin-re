@@ -3,6 +3,7 @@
 ## Auth
 
 - `GET /api/v1/auth/me`
+- `GET /api/v1/audit-logs`
 
 ## Members
 
@@ -26,4 +27,4 @@
 
 - 認証は `Authorization: Bearer <Firebase ID token>`
 - 開発時は `.env` の `DEV_BYPASS_AUTH=true` でバイパス可能
-
+- 更新系APIは `audit_logs` に自動記録
