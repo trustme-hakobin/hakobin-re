@@ -41,3 +41,7 @@ npm run dev:frontend
 ## Env
 
 `apps/backend/.env.example` を `.env` にコピーして利用してください。
+
+## Deploy
+
+- backend(AppRun): `docs/deploy-sakura-apprun.md`
