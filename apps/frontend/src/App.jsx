@@ -45,6 +45,8 @@ export function App() {
   const [payrollPage, setPayrollPage] = useState(1);
   const [payrollLimit] = useState(20);
   const [payrollTotal, setPayrollTotal] = useState(0);
+  const [detailImportInfo, setDetailImportInfo] = useState('');
+  const [salesImportInfo, setSalesImportInfo] = useState('');
 
   const pages = useMemo(() => Math.max(1, Math.ceil(total / limit)), [total, limit]);
   const payrollPages = useMemo(
@@ -194,6 +196,57 @@ export function App() {
     }
   };
 
+  const importDetailCsv = async (event) => {
+    const file = event.target.files?.[0];
+    if (!file) return;
+    setError('');
+    try {
+      const text = await file.text();
+      const rows = parseCsvRows(text);
+      const normalized = rows
+        .map((row) => normalizeDetailRow(row))
+        .filter(Boolean);
+      if (normalized.length === 0) {
+        throw new Error('個人明細CSVの有効行がありません。');
+      }
+      const response = await apiPost('/api/v1/payroll/import/details', {
+        rows: normalized,
+        replaceCsvForMonths: true
+      });
+      const importedCount = Number(response?.data?.importedCount || normalized.length);
+      setDetailImportInfo(`${file.name} / ${importedCount}件`);
+      await loadPayroll(1);
+    } catch (e) {
+      setError(e.message || '個人明細CSV取り込みに失敗しました。');
+    } finally {
+      event.target.value = '';
+    }
+  };
+
+  const importSalesCsv = async (event) => {
+    const file = event.target.files?.[0];
+    if (!file) return;
+    setError('');
+    try {
+      const text = await file.text();
+      const rows = parseCsvRows(text);
+      const normalized = rows
+        .map((row) => normalizeSalesRow(row))
+        .filter(Boolean);
+      if (normalized.length === 0) {
+        throw new Error('売上合計CSVの有効行がありません。');
+      }
+      const response = await apiPost('/api/v1/payroll/import/sales-summary', { rows: normalized });
+      const importedCount = Number(response?.data?.importedCount || normalized.length);
+      setSalesImportInfo(`${file.name} / ${importedCount}件`);
+      await loadPayroll(1);
+    } catch (e) {
+      setError(e.message || '売上合計CSV取り込みに失敗しました。');
+    } finally {
+      event.target.value = '';
+    }
+  };
+
   return (
     <main style={{ padding: 20, fontFamily: 'system-ui, sans-serif', maxWidth: 1280, margin: '0 auto' }}>
       <h1 style={{ marginBottom: 8 }}>hakobin-re / ドライバー管理</h1>
@@ -318,6 +371,18 @@ export function App() {
 
       <section style={{ border: '1px solid #ddd', borderRadius: 8, padding: 12, marginTop: 16 }}>
         <h2 style={{ marginTop: 0, marginBottom: 8 }}>明細管理（payroll）</h2>
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, minmax(0, 1fr))', gap: 8, marginBottom: 10 }}>
+          <label style={{ border: '1px solid #ddd', borderRadius: 8, padding: 8 }}>
+            <p style={{ margin: 0, marginBottom: 6, fontSize: 13, fontWeight: 600 }}>個人明細CSV取り込み</p>
+            <input type="file" accept=".csv" onChange={importDetailCsv} />
+            {detailImportInfo ? <p style={{ margin: '6px 0 0', fontSize: 12, color: '#166534' }}>完了: {detailImportInfo}</p> : null}
+          </label>
+          <label style={{ border: '1px solid #ddd', borderRadius: 8, padding: 8 }}>
+            <p style={{ margin: 0, marginBottom: 6, fontSize: 13, fontWeight: 600 }}>売上合計CSV取り込み</p>
+            <input type="file" accept=".csv" onChange={importSalesCsv} />
+            {salesImportInfo ? <p style={{ margin: '6px 0 0', fontSize: 12, color: '#166534' }}>完了: {salesImportInfo}</p> : null}
+          </label>
+        </div>
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(6, minmax(0, 1fr))', gap: 8, marginBottom: 10 }}>
           <input
             placeholder="対象月 (例: 2026-03)"
@@ -404,6 +469,59 @@ function formatNumber(value) {
   const num = Number(value || 0);
   if (!Number.isFinite(num)) return '0';
   return num.toLocaleString('ja-JP');
+}
+
+function parseCsvRows(text) {
+  const lines = String(text || '').replace(/\r\n/g, '\n').replace(/\r/g, '\n').split('\n').filter(Boolean);
+  if (lines.length < 2) return [];
+  const headers = lines[0].split(',').map((h) => normalizeHeader(h));
+  return lines.slice(1).map((line) => {
+    const cells = line.split(',');
+    const row = {};
+    headers.forEach((header, idx) => {
+      row[header] = String(cells[idx] || '').trim();
+    });
+    return row;
+  });
+}
+
+function normalizeHeader(value) {
+  return String(value || '').replace(/^"|"$/g, '').replace(/\s+/g, '').replace(/　/g, '').trim().toLowerCase();
+}
+
+function toMonth(value) {
+  const raw = String(value || '').trim();
+  const digits = raw.replace(/[^\d]/g, '');
+  if (digits.length >= 6) {
+    return `${digits.slice(0, 4)}-${digits.slice(4, 6)}`;
+  }
+  return raw;
+}
+
+function normalizeDetailRow(row) {
+  const driverId = row.driverid || row.driver_id || row.委託社員番号 || row.社員番号 || '';
+  const month = toMonth(row.month || row.対象月 || row.稼働月 || row.稼働日 || '');
+  const content = row.content || row.内容 || row.description || '';
+  const unitPrice = row.unitprice || row.単価 || row.業務委託費用 || '0';
+  const quantity = row.quantity || row.件数 || row.個数 || '0';
+  if (!String(driverId).trim() || !String(month).trim()) return null;
+  return {
+    driverId: String(driverId).trim(),
+    month: String(month).trim(),
+    content: String(content || '').trim(),
+    unitPrice: Number(String(unitPrice || '').replace(/,/g, '')) || 0,
+    quantity: Number(String(quantity || '').replace(/,/g, '')) || 0
+  };
+}
+
+function normalizeSalesRow(row) {
+  const month = toMonth(row.month || row.対象月 || row.稼働日 || row.日付 || '');
+  const total = row.total || row.合計金額 || row.売上合計 || row.金額 || '';
+  if (!String(month).trim()) return null;
+  return {
+    month: String(month).trim(),
+    total: Number(String(total || '').replace(/,/g, '')) || 0
+  };
 }
 
 function SummaryCard({ label, value }) {
