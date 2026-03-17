@@ -736,6 +736,24 @@ app.post('/api/v1/payroll/import/sales-summary', { preHandler: [authGuard, requi
   }
 });
 
+app.get('/api/v1/payroll/sales-summary', { preHandler: [authGuard, requireAdmin] }, async (request, reply) => {
+  try {
+    const month = normalizeMonth(request.query.month);
+    if (month && month !== 'all') {
+      const one = await pool.query('select month, total, updated_at from payroll_sales_summaries where month = $1 limit 1', [month]);
+      return ok({ items: one.rows, total: one.rows[0]?.total || 0 });
+    }
+    const list = await pool.query(
+      'select month, total, updated_at from payroll_sales_summaries order by month desc limit 24'
+    );
+    const total = list.rows.reduce((sum, row) => sum + Number(row.total || 0), 0);
+    return ok({ items: list.rows, total });
+  } catch (error) {
+    request.log.error(error);
+    return reply.code(500).send(fail('sales_summary_list_failed', 'Failed to fetch sales summary.'));
+  }
+});
+
 app.get('/api/v1/payroll/deductions', { preHandler: [authGuard, requireAdmin] }, async (request, reply) => {
   const driverId = String(request.query.driverId || '').trim();
   const month = normalizeMonth(request.query.month);

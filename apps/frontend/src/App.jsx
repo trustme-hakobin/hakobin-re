@@ -55,6 +55,7 @@ export function App() {
   const [payrollPage, setPayrollPage] = useState(1);
   const [payrollLimit] = useState(20);
   const [payrollTotal, setPayrollTotal] = useState(0);
+  const [salesSummaryTotal, setSalesSummaryTotal] = useState(0);
   const [detailImportInfo, setDetailImportInfo] = useState('');
   const [salesImportInfo, setSalesImportInfo] = useState('');
   const [deductionItems, setDeductionItems] = useState([]);
@@ -127,9 +128,13 @@ export function App() {
       if (payrollMonth.trim()) summaryParams.set('month', payrollMonth.trim());
       if (payrollDriverId && payrollDriverId !== 'all') summaryParams.set('driverId', payrollDriverId);
 
-      const [entriesResponse, summaryResponse] = await Promise.all([
+      const summarySalesParams = new URLSearchParams();
+      if (payrollMonth.trim()) summarySalesParams.set('month', payrollMonth.trim());
+
+      const [entriesResponse, summaryResponse, salesSummaryResponse] = await Promise.all([
         apiGet(`/api/v1/payroll/entries?${entriesParams.toString()}`),
-        apiGet(`/api/v1/payroll/summary?${summaryParams.toString()}`)
+        apiGet(`/api/v1/payroll/summary?${summaryParams.toString()}`),
+        apiGet(`/api/v1/payroll/sales-summary?${summarySalesParams.toString()}`)
       ]);
 
       setPayrollEntries(entriesResponse?.data?.items || []);
@@ -141,6 +146,7 @@ export function App() {
         pending_count: 0,
         needs_change_count: 0
       });
+      setSalesSummaryTotal(Number(salesSummaryResponse?.data?.total || 0));
     } catch (e) {
       setError(e.message || '明細取得に失敗しました。');
     } finally {
@@ -660,6 +666,7 @@ export function App() {
         <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginBottom: 10 }}>
           <SummaryCard label="表示件数" value={payrollSummary.count} />
           <SummaryCard label="合計金額" value={`¥${formatNumber(payrollSummary.total_amount)}`} />
+          <SummaryCard label="売上合計（CSV）" value={`¥${formatNumber(salesSummaryTotal)}`} />
           <SummaryCard label="未承認" value={payrollSummary.pending_count} />
           <SummaryCard label="差し戻し" value={payrollSummary.needs_change_count} />
         </div>

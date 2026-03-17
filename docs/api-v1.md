@@ -23,6 +23,7 @@
 - `GET /api/v1/payroll/summary`
 - `POST /api/v1/payroll/import/details`
 - `POST /api/v1/payroll/import/sales-summary`
+- `GET /api/v1/payroll/sales-summary`
 - `GET /api/v1/payroll/deductions`
 - `PUT /api/v1/payroll/deductions`
 
