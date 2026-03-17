@@ -8,9 +8,30 @@ const defaultHeaders = () => {
 };
 
 export async function apiGet(path) {
+  return apiRequest(path, { method: 'GET' });
+}
+
+export async function apiPost(path, body) {
+  return apiRequest(path, {
+    method: 'POST',
+    body: JSON.stringify(body || {})
+  });
+}
+
+export async function apiPatch(path, body) {
+  return apiRequest(path, {
+    method: 'PATCH',
+    body: JSON.stringify(body || {})
+  });
+}
+
+async function apiRequest(path, options = {}) {
   const response = await fetch(`${API_BASE_URL}${path}`, {
-    method: 'GET',
-    headers: defaultHeaders()
+    ...options,
+    headers: {
+      ...defaultHeaders(),
+      ...(options.headers || {})
+    }
   });
   const data = await response.json().catch(() => ({}));
   if (!response.ok || data?.ok === false) {
@@ -18,4 +39,3 @@ export async function apiGet(path) {
   }
   return data;
 }
-
