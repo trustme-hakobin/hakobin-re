@@ -50,11 +50,22 @@ export function App() {
   const [deductionItems, setDeductionItems] = useState([]);
   const [taxSettings, setTaxSettings] = useState({ mode: 'none', rate: 10 });
   const [deductionMessage, setDeductionMessage] = useState('');
+  const [auditLogs, setAuditLogs] = useState([]);
+  const [auditPage, setAuditPage] = useState(1);
+  const [auditLimit] = useState(20);
+  const [auditTotal, setAuditTotal] = useState(0);
+  const [auditAction, setAuditAction] = useState('');
+  const [auditTargetType, setAuditTargetType] = useState('');
+  const [auditQuery, setAuditQuery] = useState('');
 
   const pages = useMemo(() => Math.max(1, Math.ceil(total / limit)), [total, limit]);
   const payrollPages = useMemo(
     () => Math.max(1, Math.ceil(payrollTotal / payrollLimit)),
     [payrollTotal, payrollLimit]
+  );
+  const auditPages = useMemo(
+    () => Math.max(1, Math.ceil(auditTotal / auditLimit)),
+    [auditTotal, auditLimit]
   );
 
   const fetchHealth = useCallback(async () => {
@@ -156,9 +167,32 @@ export function App() {
     }
   }, [payrollDriverId, payrollMonth]);
 
+  const loadAuditLogs = useCallback(async (nextPage = auditPage) => {
+    setLoading(true);
+    setError('');
+    try {
+      const params = new URLSearchParams({
+        page: String(nextPage),
+        limit: String(auditLimit)
+      });
+      if (auditAction.trim()) params.set('action', auditAction.trim());
+      if (auditTargetType.trim()) params.set('targetType', auditTargetType.trim());
+      if (auditQuery.trim()) params.set('q', auditQuery.trim());
+      const response = await apiGet(`/api/v1/audit-logs?${params.toString()}`);
+      setAuditLogs(response?.data?.items || []);
+      setAuditTotal(Number(response?.data?.total || 0));
+      setAuditPage(nextPage);
+    } catch (e) {
+      setError(e.message || '操作ログ取得に失敗しました。');
+    } finally {
+      setLoading(false);
+    }
+  }, [auditAction, auditLimit, auditPage, auditQuery, auditTargetType]);
+
   useEffect(() => {
     fetchHealth();
     loadPayroll(1);
+    loadAuditLogs(1);
   }, [fetchHealth]);
 
   useEffect(() => {
@@ -594,6 +628,64 @@ export function App() {
           <button type="button" disabled={payrollPage >= payrollPages} onClick={() => loadPayroll(payrollPage + 1)}>次へ</button>
         </div>
       </section>
+
+      <section style={{ border: '1px solid #ddd', borderRadius: 8, padding: 12, marginTop: 16 }}>
+        <h2 style={{ marginTop: 0, marginBottom: 8 }}>操作ログ（audit logs）</h2>
+        <div style={{ display: 'grid', gridTemplateColumns: '180px 180px 1fr 120px', gap: 8, marginBottom: 10 }}>
+          <input
+            placeholder="action (例: update)"
+            value={auditAction}
+            onChange={(e) => setAuditAction(e.target.value)}
+          />
+          <input
+            placeholder="targetType (例: member)"
+            value={auditTargetType}
+            onChange={(e) => setAuditTargetType(e.target.value)}
+          />
+          <input
+            placeholder="actor_uid / actor_email / target_id"
+            value={auditQuery}
+            onChange={(e) => setAuditQuery(e.target.value)}
+          />
+          <button type="button" onClick={() => loadAuditLogs(1)} disabled={loading}>
+            {loading ? '読み込み中...' : 'ログ検索'}
+          </button>
+        </div>
+
+        <div style={{ border: '1px solid #eee', borderRadius: 8, overflow: 'hidden' }}>
+          <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+            <thead style={{ background: '#f6f6f6' }}>
+              <tr>
+                <th style={{ textAlign: 'left', padding: 8 }}>日時</th>
+                <th style={{ textAlign: 'left', padding: 8 }}>actor</th>
+                <th style={{ textAlign: 'left', padding: 8 }}>role</th>
+                <th style={{ textAlign: 'left', padding: 8 }}>action</th>
+                <th style={{ textAlign: 'left', padding: 8 }}>target</th>
+                <th style={{ textAlign: 'left', padding: 8 }}>target_id</th>
+              </tr>
+            </thead>
+            <tbody>
+              {auditLogs.map((log) => (
+                <tr key={log.id} style={{ borderTop: '1px solid #eee' }}>
+                  <td style={{ padding: 8 }}>{formatDateTime(log.created_at)}</td>
+                  <td style={{ padding: 8 }}>{log.actor_email || log.actor_uid || '-'}</td>
+                  <td style={{ padding: 8 }}>{log.actor_role || '-'}</td>
+                  <td style={{ padding: 8 }}>{log.action}</td>
+                  <td style={{ padding: 8 }}>{log.target_type}</td>
+                  <td style={{ padding: 8 }}>{log.target_id || '-'}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 10 }}>
+          <button type="button" disabled={auditPage <= 1} onClick={() => loadAuditLogs(auditPage - 1)}>前へ</button>
+          <span>{auditPage} / {auditPages}</span>
+          <span>表示: {auditLogs.length} / 総件数: {auditTotal}</span>
+          <button type="button" disabled={auditPage >= auditPages} onClick={() => loadAuditLogs(auditPage + 1)}>次へ</button>
+        </div>
+      </section>
     </main>
   );
 }
@@ -606,6 +698,12 @@ function formatNumber(value) {
   const num = Number(value || 0);
   if (!Number.isFinite(num)) return '0';
   return num.toLocaleString('ja-JP');
+}
+
+function formatDateTime(value) {
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return '-';
+  return date.toLocaleString('ja-JP');
 }
 
 function parseCsvRows(text) {
