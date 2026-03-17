@@ -1,0 +1,16 @@
+{
+  "name": "hakobin-re",
+  "private": true,
+  "version": "0.1.0",
+  "workspaces": [
+    "apps/*",
+    "packages/*"
+  ],
+  "scripts": {
+    "dev:frontend": "npm run dev --workspace @hakobin/frontend",
+    "dev:backend": "npm run dev --workspace @hakobin/backend",
+    "build:frontend": "npm run build --workspace @hakobin/frontend",
+    "start:backend": "npm run start --workspace @hakobin/backend"
+  }
+}
+
