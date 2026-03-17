@@ -1,0 +1,15 @@
+[
+  {
+    "id": "sample001-2026-03-01",
+    "driverId": "0530099999",
+    "month": "2026-03",
+    "content": "野依 サンプル太郎 宅急便",
+    "unitPrice": 172,
+    "quantity": 100,
+    "total": 17200,
+    "status": "pending",
+    "statementId": "default",
+    "statementType": "driver"
+  }
+]
+

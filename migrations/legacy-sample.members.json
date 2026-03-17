@@ -1,0 +1,14 @@
+[
+  {
+    "name": "サンプル 太郎",
+    "accountUserId": "sample001",
+    "driverId": ["0530099999"],
+    "officeName": ["野依"],
+    "workOffice": "野依",
+    "position": "ドライバー",
+    "invoiceNumber": "T1234567890123",
+    "vehicleOwnership": "lease",
+    "cargoInsuranceStatus": "joined"
+  }
+]
+
