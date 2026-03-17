@@ -25,6 +25,13 @@ export async function apiPatch(path, body) {
   });
 }
 
+export async function apiPut(path, body) {
+  return apiRequest(path, {
+    method: 'PUT',
+    body: JSON.stringify(body || {})
+  });
+}
+
 async function apiRequest(path, options = {}) {
   const response = await fetch(`${API_BASE_URL}${path}`, {
     ...options,

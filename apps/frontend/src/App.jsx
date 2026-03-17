@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
-import { apiGet, apiPatch, apiPost } from './api';
+import { apiGet, apiPatch, apiPost, apiPut } from './api';
 
 const initialForm = {
   name: '',
@@ -47,6 +47,9 @@ export function App() {
   const [payrollTotal, setPayrollTotal] = useState(0);
   const [detailImportInfo, setDetailImportInfo] = useState('');
   const [salesImportInfo, setSalesImportInfo] = useState('');
+  const [deductionItems, setDeductionItems] = useState([]);
+  const [taxSettings, setTaxSettings] = useState({ mode: 'none', rate: 10 });
+  const [deductionMessage, setDeductionMessage] = useState('');
 
   const pages = useMemo(() => Math.max(1, Math.ceil(total / limit)), [total, limit]);
   const payrollPages = useMemo(
@@ -122,6 +125,37 @@ export function App() {
     }
   }, [payrollDriverId, payrollLimit, payrollMonth, payrollPage, payrollQuery, payrollStatus]);
 
+  const loadDeductions = useCallback(async () => {
+    if (!payrollMonth.trim() || payrollDriverId === 'all') {
+      setDeductionItems([]);
+      setTaxSettings({ mode: 'none', rate: 10 });
+      return;
+    }
+    try {
+      const params = new URLSearchParams({
+        driverId: payrollDriverId,
+        month: payrollMonth.trim(),
+        statementId: 'default'
+      });
+      const response = await apiGet(`/api/v1/payroll/deductions?${params.toString()}`);
+      const nextItems = Array.isArray(response?.data?.items) ? response.data.items : [];
+      setDeductionItems(nextItems.map((item, idx) => ({
+        id: item?.id || `row-${idx + 1}`,
+        label: String(item?.label || ''),
+        amount: Number(item?.amount || 0)
+      })));
+      const nextTax = response?.data?.tax_settings && typeof response.data.tax_settings === 'object'
+        ? response.data.tax_settings
+        : { mode: 'none', rate: 10 };
+      setTaxSettings({
+        mode: String(nextTax.mode || 'none'),
+        rate: Number(nextTax.rate || 10)
+      });
+    } catch (e) {
+      setError(e.message || '天引き取得に失敗しました。');
+    }
+  }, [payrollDriverId, payrollMonth]);
+
   useEffect(() => {
     fetchHealth();
     loadPayroll(1);
@@ -130,6 +164,10 @@ export function App() {
   useEffect(() => {
     loadMembers(1);
   }, [status, loadMembers]);
+
+  useEffect(() => {
+    loadDeductions();
+  }, [loadDeductions]);
 
   const toPayload = (form) => ({
     name: form.name.trim(),
@@ -244,6 +282,45 @@ export function App() {
       setError(e.message || '売上合計CSV取り込みに失敗しました。');
     } finally {
       event.target.value = '';
+    }
+  };
+
+  const addDeductionRow = () => {
+    setDeductionItems((prev) => ([
+      ...prev,
+      { id: `manual-${Date.now()}`, label: '', amount: 0 }
+    ]));
+  };
+
+  const saveDeductions = async () => {
+    if (!payrollMonth.trim() || payrollDriverId === 'all') {
+      setError('天引き保存には対象月とドライバー選択が必要です。');
+      return;
+    }
+    setError('');
+    setDeductionMessage('');
+    try {
+      const payloadItems = deductionItems
+        .map((item) => ({
+          id: item.id,
+          label: String(item.label || '').trim(),
+          amount: Number(item.amount || 0)
+        }))
+        .filter((item) => item.label || item.amount);
+      await apiPut('/api/v1/payroll/deductions', {
+        driverId: payrollDriverId,
+        month: payrollMonth.trim(),
+        statementId: 'default',
+        items: payloadItems,
+        taxSettings: {
+          mode: taxSettings.mode || 'none',
+          rate: Number(taxSettings.rate || 10)
+        }
+      });
+      setDeductionMessage('天引きを保存しました。');
+      await loadPayroll(1);
+    } catch (e) {
+      setError(e.message || '天引き保存に失敗しました。');
     }
   };
 
@@ -418,6 +495,66 @@ export function App() {
           <SummaryCard label="未承認" value={payrollSummary.pending_count} />
           <SummaryCard label="差し戻し" value={payrollSummary.needs_change_count} />
         </div>
+
+        <section style={{ border: '1px solid #eee', borderRadius: 8, padding: 10, marginBottom: 10 }}>
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 8 }}>
+            <h3 style={{ margin: 0, fontSize: 16 }}>天引き設定（選択中ドライバー・月）</h3>
+            <div style={{ display: 'flex', gap: 8 }}>
+              <button type="button" onClick={addDeductionRow}>＋項目追加</button>
+              <button type="button" onClick={saveDeductions}>保存</button>
+            </div>
+          </div>
+          <div style={{ display: 'grid', gridTemplateColumns: '180px 120px 120px', gap: 8, marginBottom: 8 }}>
+            <label style={{ display: 'grid', gap: 4 }}>
+              税区分
+              <select
+                value={taxSettings.mode}
+                onChange={(e) => setTaxSettings((prev) => ({ ...prev, mode: e.target.value }))}
+              >
+                <option value="none">なし</option>
+                <option value="inclusive">内税</option>
+                <option value="exclusive">外税</option>
+              </select>
+            </label>
+            <label style={{ display: 'grid', gap: 4 }}>
+              税率
+              <input
+                type="number"
+                value={taxSettings.rate}
+                onChange={(e) => setTaxSettings((prev) => ({ ...prev, rate: Number(e.target.value || 0) }))}
+              />
+            </label>
+          </div>
+          <div style={{ display: 'grid', gap: 6 }}>
+            {deductionItems.map((item) => (
+              <div key={item.id} style={{ display: 'grid', gridTemplateColumns: '1fr 140px 90px', gap: 8 }}>
+                <input
+                  placeholder="内容"
+                  value={item.label}
+                  onChange={(e) => setDeductionItems((prev) => prev.map((row) => (
+                    row.id === item.id ? { ...row, label: e.target.value } : row
+                  )))}
+                />
+                <input
+                  type="number"
+                  value={item.amount}
+                  onChange={(e) => setDeductionItems((prev) => prev.map((row) => (
+                    row.id === item.id ? { ...row, amount: Number(e.target.value || 0) } : row
+                  )))}
+                />
+                <button
+                  type="button"
+                  onClick={() => setDeductionItems((prev) => prev.filter((row) => row.id !== item.id))}
+                >
+                  削除
+                </button>
+              </div>
+            ))}
+          </div>
+          {deductionMessage ? (
+            <p style={{ margin: '8px 0 0', fontSize: 12, color: '#166534' }}>{deductionMessage}</p>
+          ) : null}
+        </section>
 
         <div style={{ border: '1px solid #eee', borderRadius: 8, overflow: 'hidden' }}>
           <table style={{ width: '100%', borderCollapse: 'collapse' }}>
