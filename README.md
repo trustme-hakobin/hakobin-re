@@ -32,6 +32,7 @@ cp apps/backend/.env.example apps/backend/.env
 
 # 3) frontend env
 cp apps/frontend/.env.example apps/frontend/.env
+# Firebaseログインを使う場合は VITE_FIREBASE_* も設定
 
 # 4) 起動
 npm run dev:backend
@@ -69,6 +70,8 @@ npm run verify:migration -- \
 ## Env
 
 `apps/backend/.env.example` を `.env` にコピーして利用してください。
+`apps/frontend/.env.example` の `VITE_FIREBASE_*` を設定すると、
+管理画面の「Firebaseログイン」からIDトークンを取得できます。
 
 ## Deploy
 

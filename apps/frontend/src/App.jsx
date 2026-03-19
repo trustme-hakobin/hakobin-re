@@ -1,5 +1,6 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { apiDelete, apiGet, apiPatch, apiPost, apiPut, clearAuthToken, getAuthToken, setAuthToken } from './api';
+import { loginWithEmailPassword, logoutFirebaseSession } from './firebaseAuth';
 
 const initialForm = {
   name: '',
@@ -35,6 +36,8 @@ export function App() {
   const [bearerTokenInput, setBearerTokenInput] = useState(getAuthToken());
   const [authMessage, setAuthMessage] = useState('');
   const [authProfile, setAuthProfile] = useState(null);
+  const [loginEmail, setLoginEmail] = useState('');
+  const [loginPassword, setLoginPassword] = useState('');
   const [members, setMembers] = useState([]);
   const [page, setPage] = useState(1);
   const [limit] = useState(20);
@@ -471,7 +474,41 @@ export function App() {
 
       <section style={{ border: '1px solid #ddd', borderRadius: 8, padding: 12, marginBottom: 12 }}>
         <h3 style={{ marginTop: 0, marginBottom: 8 }}>認証トークン（Bearer）</h3>
-        <div style={{ display: 'grid', gridTemplateColumns: '1fr auto auto auto', gap: 8, alignItems: 'center' }}>
+        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr auto', gap: 8, alignItems: 'center', marginBottom: 8 }}>
+          <input
+            type="email"
+            placeholder="FirebaseログインEmail"
+            value={loginEmail}
+            onChange={(e) => setLoginEmail(e.target.value)}
+            style={{ height: 34, padding: '0 8px' }}
+          />
+          <input
+            type="password"
+            placeholder="FirebaseログインPassword"
+            value={loginPassword}
+            onChange={(e) => setLoginPassword(e.target.value)}
+            style={{ height: 34, padding: '0 8px' }}
+          />
+          <button
+            type="button"
+            onClick={async () => {
+              setError('');
+              setAuthMessage('');
+              setAuthProfile(null);
+              try {
+                const result = await loginWithEmailPassword(loginEmail, loginPassword);
+                setAuthToken(result.idToken);
+                setBearerTokenInput(result.idToken);
+                setAuthMessage(`ログイン成功: ${result.email || result.uid}`);
+              } catch (e) {
+                setError(e.message || 'Firebaseログインに失敗しました。');
+              }
+            }}
+          >
+            Firebaseログイン
+          </button>
+        </div>
+        <div style={{ display: 'grid', gridTemplateColumns: '1fr auto auto auto auto', gap: 8, alignItems: 'center' }}>
           <input
             type="password"
             placeholder="Firebase ID Token を入力"
@@ -499,6 +536,22 @@ export function App() {
             }}
           >
             クリア
+          </button>
+          <button
+            type="button"
+            onClick={async () => {
+              setAuthMessage('');
+              setAuthProfile(null);
+              try {
+                await logoutFirebaseSession();
+              } catch {
+                // ignore: token clear is the source of truth for API requests
+              }
+              setBearerTokenInput('');
+              clearAuthToken();
+            }}
+          >
+            ログアウト
           </button>
           <button type="button" onClick={checkAuth}>接続確認</button>
         </div>
