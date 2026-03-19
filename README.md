@@ -38,6 +38,26 @@ npm run dev:backend
 npm run dev:frontend
 ```
 
+## DB Check / Init
+
+```bash
+# DB接続確認
+npm run db:check
+
+# テーブル初期化
+npm run db:init
+```
+
+## Legacy Migration (from old hakobin JSON)
+
+```bash
+BASE="/absolute/path/to/migrations-export/<companyKey>/<timestamp>"
+npm run migrate:legacy -- \
+  --members "$BASE/legacy.members.json" \
+  --payroll "$BASE/legacy.payroll.json" \
+  --sales "$BASE/legacy.sales.json"
+```
+
 ## Env
 
 `apps/backend/.env.example` を `.env` にコピーして利用してください。
