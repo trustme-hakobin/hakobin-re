@@ -12,7 +12,6 @@
     "build:frontend": "npm run build --workspace @hakobin/frontend",
     "start:backend": "npm run start --workspace @hakobin/backend",
     "db:check": "npm run db:check --workspace @hakobin/backend",
-    "db:init": "npm run db:init --workspace @hakobin/backend",
-    "migrate:legacy": "npm run migrate:legacy --workspace @hakobin/backend"
+    "db:init": "npm run db:init --workspace @hakobin/backend"
   }
 }

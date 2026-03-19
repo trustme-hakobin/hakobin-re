@@ -8,7 +8,8 @@
     "start": "node src/server.js",
     "db:init": "node scripts/init-db-schema.js",
     "db:check": "node scripts/check-db-connection.js",
-    "migrate:legacy": "node scripts/import-legacy-json.js"
+    "migrate:legacy": "node scripts/import-legacy-json.js",
+    "verify:migration": "node scripts/verify-migration.js"
   },
   "dependencies": {
     "@fastify/cors": "^8.5.0",

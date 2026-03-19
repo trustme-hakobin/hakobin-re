@@ -22,8 +22,15 @@ npm run db:check
 npm run db:init
 
 # 3) members + payroll + sales を一括投入
+cd apps/backend
 BASE="/absolute/path/to/migrations-export/<companyKey>/<timestamp>"
 npm run migrate:legacy -- \
+  --members "$BASE/legacy.members.json" \
+  --payroll "$BASE/legacy.payroll.json" \
+  --sales "$BASE/legacy.sales.json"
+
+# 4) 移行検証
+npm run verify:migration -- \
   --members "$BASE/legacy.members.json" \
   --payroll "$BASE/legacy.payroll.json" \
   --sales "$BASE/legacy.sales.json"

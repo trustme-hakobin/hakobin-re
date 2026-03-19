@@ -51,8 +51,16 @@ npm run db:init
 ## Legacy Migration (from old hakobin JSON)
 
 ```bash
+cd apps/backend
+
 BASE="/absolute/path/to/migrations-export/<companyKey>/<timestamp>"
 npm run migrate:legacy -- \
+  --members "$BASE/legacy.members.json" \
+  --payroll "$BASE/legacy.payroll.json" \
+  --sales "$BASE/legacy.sales.json"
+
+# 移行検証（件数突合せ + 未紐付け明細確認）
+npm run verify:migration -- \
   --members "$BASE/legacy.members.json" \
   --payroll "$BASE/legacy.payroll.json" \
   --sales "$BASE/legacy.sales.json"
