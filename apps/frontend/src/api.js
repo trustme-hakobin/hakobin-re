@@ -1,8 +1,34 @@
 const API_BASE_URL = (import.meta.env.VITE_API_BASE_URL || 'http://localhost:8080').replace(/\/$/, '');
+const TOKEN_STORAGE_KEY = 'hakobin_re_bearer_token';
+
+let runtimeBearerToken = String(import.meta.env.VITE_DEV_BEARER_TOKEN || '').trim();
+if (!runtimeBearerToken && typeof window !== 'undefined') {
+  const saved = window.localStorage.getItem(TOKEN_STORAGE_KEY);
+  if (saved) runtimeBearerToken = String(saved).trim();
+}
+
+export function getAuthToken() {
+  return runtimeBearerToken;
+}
+
+export function setAuthToken(token) {
+  runtimeBearerToken = String(token || '').trim();
+  if (typeof window !== 'undefined') {
+    if (runtimeBearerToken) {
+      window.localStorage.setItem(TOKEN_STORAGE_KEY, runtimeBearerToken);
+    } else {
+      window.localStorage.removeItem(TOKEN_STORAGE_KEY);
+    }
+  }
+}
+
+export function clearAuthToken() {
+  setAuthToken('');
+}
 
 const defaultHeaders = () => {
   const headers = { 'Content-Type': 'application/json' };
-  const token = import.meta.env.VITE_DEV_BEARER_TOKEN;
+  const token = runtimeBearerToken;
   if (token) headers.Authorization = `Bearer ${token}`;
   return headers;
 };

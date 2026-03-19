@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
-import { apiDelete, apiGet, apiPatch, apiPost, apiPut } from './api';
+import { apiDelete, apiGet, apiPatch, apiPost, apiPut, clearAuthToken, getAuthToken, setAuthToken } from './api';
 
 const initialForm = {
   name: '',
@@ -32,6 +32,9 @@ export function App() {
   const [health, setHealth] = useState('...');
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
+  const [bearerTokenInput, setBearerTokenInput] = useState(getAuthToken());
+  const [authMessage, setAuthMessage] = useState('');
+  const [authProfile, setAuthProfile] = useState(null);
   const [members, setMembers] = useState([]);
   const [page, setPage] = useState(1);
   const [limit] = useState(20);
@@ -87,6 +90,20 @@ export function App() {
       setHealth(response?.data?.status || 'up');
     } catch {
       setHealth('down');
+    }
+  }, []);
+
+  const checkAuth = useCallback(async () => {
+    setError('');
+    setAuthMessage('');
+    try {
+      const response = await apiGet('/api/v1/auth/me');
+      setAuthProfile(response?.data || null);
+      setAuthMessage('認証OK');
+    } catch (e) {
+      setAuthProfile(null);
+      setAuthMessage('認証NG');
+      setError(e.message || '認証確認に失敗しました。');
     }
   }, []);
 
@@ -451,6 +468,50 @@ export function App() {
     <main style={{ padding: 20, fontFamily: 'system-ui, sans-serif', maxWidth: 1280, margin: '0 auto' }}>
       <h1 style={{ marginBottom: 8 }}>hakobin-re / ドライバー管理</h1>
       <p style={{ marginTop: 0 }}>backend health: <strong>{health}</strong></p>
+
+      <section style={{ border: '1px solid #ddd', borderRadius: 8, padding: 12, marginBottom: 12 }}>
+        <h3 style={{ marginTop: 0, marginBottom: 8 }}>認証トークン（Bearer）</h3>
+        <div style={{ display: 'grid', gridTemplateColumns: '1fr auto auto auto', gap: 8, alignItems: 'center' }}>
+          <input
+            type="password"
+            placeholder="Firebase ID Token を入力"
+            value={bearerTokenInput}
+            onChange={(e) => setBearerTokenInput(e.target.value)}
+            style={{ height: 34, padding: '0 8px' }}
+          />
+          <button
+            type="button"
+            onClick={() => {
+              setAuthMessage('');
+              setAuthProfile(null);
+              setAuthToken(bearerTokenInput);
+            }}
+          >
+            保存
+          </button>
+          <button
+            type="button"
+            onClick={() => {
+              setAuthMessage('');
+              setAuthProfile(null);
+              setBearerTokenInput('');
+              clearAuthToken();
+            }}
+          >
+            クリア
+          </button>
+          <button type="button" onClick={checkAuth}>接続確認</button>
+        </div>
+        <div style={{ marginTop: 6, fontSize: 12, color: '#475569' }}>
+          保存先: ブラウザlocalStorage（key: <code>hakobin_re_bearer_token</code>）
+        </div>
+        {authMessage ? (
+          <div style={{ marginTop: 6, fontSize: 12, color: authMessage === '認証OK' ? '#166534' : '#b91c1c' }}>
+            {authMessage}
+            {authProfile ? ` / uid: ${authProfile.uid || '-'} / role: ${authProfile.role || '-'}` : ''}
+          </div>
+        ) : null}
+      </section>
 
       <section style={{ border: '1px solid #ddd', borderRadius: 8, padding: 12, marginBottom: 12 }}>
         <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
