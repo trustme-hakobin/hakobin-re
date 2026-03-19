@@ -6,10 +6,12 @@
   "scripts": {
     "dev": "node --watch src/server.js",
     "start": "node src/server.js",
+    "db:init": "node scripts/init-db-schema.js",
+    "db:check": "node scripts/check-db-connection.js",
     "migrate:legacy": "node scripts/import-legacy-json.js"
   },
   "dependencies": {
-    "@fastify/cors": "^10.0.1",
+    "@fastify/cors": "^8.5.0",
     "dotenv": "^16.4.5",
     "firebase-admin": "^12.7.0",
     "fastify": "^4.28.1",

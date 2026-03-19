@@ -5,6 +5,13 @@ import pg from 'pg';
 
 dotenv.config({ path: path.resolve(process.cwd(), '.env') });
 
+const isSslEnabled = () => {
+  const explicit = String(process.env.DB_SSL || '').toLowerCase();
+  if (explicit === 'true' || explicit === '1') return true;
+  if (explicit === 'false' || explicit === '0') return false;
+  return String(process.env.DB_HOST || '').includes('supabase.co');
+};
+
 const parseArgs = () => {
   const args = process.argv.slice(2);
   const output = { members: '', payroll: '', sales: '' };
@@ -81,7 +88,7 @@ const mapLegacyPayroll = (entry) => {
     id: String(entry?.id || `${driverId}-${month}-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`),
     driverId,
     month,
-    content: String(entry?.content || '').trim(),
+    content: String(entry?.content || '').trim() || '業務委託費',
     unitPrice,
     quantity,
     total,
@@ -164,7 +171,7 @@ const upsertPayrollEntries = async (client, rows) => {
   let count = 0;
   for (const raw of rows) {
     const entry = mapLegacyPayroll(raw);
-    if (!entry.driverId || !entry.month || !entry.content) continue;
+    if (!entry.driverId || !entry.month) continue;
     await client.query(
       `insert into payroll_entries
         (id, driver_id, month, content, unit_price, quantity, total, status, statement_id, statement_type, row_no, input_source, driver_note, admin_note, updated_at)
@@ -235,7 +242,8 @@ const main = async () => {
     port: Number(process.env.DB_PORT || 5432),
     database: process.env.DB_NAME,
     user: process.env.DB_USER,
-    password: process.env.DB_PASSWORD
+    password: process.env.DB_PASSWORD,
+    ssl: isSslEnabled() ? { rejectUnauthorized: false } : undefined
   });
   const client = await pool.connect();
   try {
@@ -256,4 +264,3 @@ const main = async () => {
 };
 
 main();
-
