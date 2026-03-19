@@ -2,6 +2,7 @@ import fs from 'node:fs/promises';
 import path from 'node:path';
 import dotenv from 'dotenv';
 import pg from 'pg';
+import { createDbPoolConfig } from '../src/db-config.js';
 
 dotenv.config({ path: path.resolve(process.cwd(), '.env') });
 
@@ -16,13 +17,6 @@ const parseArgs = () => {
     if (key === '--sales') output.sales = value || '';
   }
   return output;
-};
-
-const isSslEnabled = () => {
-  const explicit = String(process.env.DB_SSL || '').toLowerCase();
-  if (explicit === 'true' || explicit === '1') return true;
-  if (explicit === 'false' || explicit === '0') return false;
-  return String(process.env.DB_HOST || '').includes('supabase.co');
 };
 
 const readJsonLength = async (filePath) => {
@@ -41,14 +35,7 @@ const main = async () => {
     sales_months: await readJsonLength(args.sales)
   };
 
-  const pool = new pg.Pool({
-    host: process.env.DB_HOST,
-    port: Number(process.env.DB_PORT || 5432),
-    database: process.env.DB_NAME,
-    user: process.env.DB_USER,
-    password: process.env.DB_PASSWORD,
-    ssl: isSslEnabled() ? { rejectUnauthorized: false } : undefined
-  });
+  const pool = new pg.Pool(createDbPoolConfig());
 
   try {
     const [members, payrollEntries, salesMonths, payrollOrphans] = await Promise.all([

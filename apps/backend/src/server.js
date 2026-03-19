@@ -3,19 +3,14 @@ import Fastify from 'fastify';
 import cors from '@fastify/cors';
 import pg from 'pg';
 import admin from 'firebase-admin';
+import { createDbPoolConfig } from './db-config.js';
 
 dotenv.config();
 
 const app = Fastify({ logger: true });
 await app.register(cors, { origin: process.env.CORS_ORIGIN || true });
 
-const pool = new pg.Pool({
-  host: process.env.DB_HOST,
-  port: Number(process.env.DB_PORT || 5432),
-  database: process.env.DB_NAME,
-  user: process.env.DB_USER,
-  password: process.env.DB_PASSWORD
-});
+const pool = new pg.Pool(createDbPoolConfig());
 
 const toBool = (value) => String(value || '').toLowerCase() === 'true';
 const normalizeMonth = (value) => String(value || '').trim();
