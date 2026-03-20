@@ -3,9 +3,13 @@ import Fastify from 'fastify';
 import cors from '@fastify/cors';
 import pg from 'pg';
 import admin from 'firebase-admin';
+import path from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { createDbPoolConfig } from './db-config.js';
 
-dotenv.config();
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
+dotenv.config({ path: path.resolve(__dirname, '../.env') });
 
 const app = Fastify({ logger: true });
 await app.register(cors, { origin: process.env.CORS_ORIGIN || true });

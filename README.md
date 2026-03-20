@@ -76,3 +76,4 @@ npm run verify:migration -- \
 ## Deploy
 
 - backend(AppRun): `docs/deploy-sakura-apprun.md`
+- secrets運用: `docs/secrets-operations.md`
