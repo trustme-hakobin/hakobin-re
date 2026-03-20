@@ -11,12 +11,36 @@ const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 dotenv.config({ path: path.resolve(__dirname, '../.env') });
 
+const toBool = (value) => String(value || '').toLowerCase() === 'true';
+
+const requireEnv = (name, options = {}) => {
+  const value = String(process.env[name] || '').trim();
+  if (value) return value;
+  if (options.optional) return '';
+  throw new Error(`Missing required env: ${name}`);
+};
+
+const validateRequiredEnv = () => {
+  requireEnv('DB_HOST');
+  requireEnv('DB_PORT');
+  requireEnv('DB_NAME');
+  requireEnv('DB_USER');
+  requireEnv('DB_PASSWORD');
+  requireEnv('CORS_ORIGIN');
+
+  if (!toBool(process.env.DEV_BYPASS_AUTH)) {
+    requireEnv('FIREBASE_PROJECT_ID');
+    requireEnv('FIREBASE_CLIENT_EMAIL');
+    requireEnv('FIREBASE_PRIVATE_KEY');
+  }
+};
+
+validateRequiredEnv();
+
 const app = Fastify({ logger: true });
 await app.register(cors, { origin: process.env.CORS_ORIGIN || true });
 
 const pool = new pg.Pool(createDbPoolConfig());
-
-const toBool = (value) => String(value || '').toLowerCase() === 'true';
 const normalizeMonth = (value) => String(value || '').trim();
 const parseNumeric = (value) => {
   const raw = String(value ?? '').trim();
